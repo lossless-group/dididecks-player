@@ -25,7 +25,8 @@
   "files": [
     "src",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "changelog/releases"
   ],
   "peerDependencies": {
     "astro": ">=6.0.0"

@@ -8,6 +8,29 @@ No Tailwind, no filesystem access, no registry, no Reveal.js. Slides are
 plain HTML/CSS at a 1920×1080 design size; the player scales them to any
 screen in pure CSS and prints them one per page.
 
+## What's new in 0.1.0
+
+The first release: the viewer half of DidiDecks, out of the authoring shell and
+into its own package, chosen from nine drifting copies across the Lossless tree.
+
+- **`DeckPlayer` + `PlayerSlide`:** a single-page player. One 16:9 slide at a
+  time, arrow keys and swipe, **T**/**J** for a contents list that skips to any
+  slide, **F** for fullscreen, `#N` links, and ⌘P prints one slide per page.
+- **`SlideCanvas` centres its slide**, so letterboxing is even on both sides.
+- **`DeckChrome` knows where you are:** it listened for an event the scroll deck
+  never sent. Cmd, Ctrl and Alt shortcuts now pass through to the browser.
+
+Full notes: [`changelog/releases/0.1.0.md`](changelog/releases/0.1.0.md) ·
+[GitHub release](https://github.com/lossless-group/dididecks-player/releases/tag/v0.1.0)
+
+## Install
+
+```sh
+pnpm add @lossless-group/dididecks-player
+```
+
+Peer dependency: `astro` 6 or later.
+
 ## What's in it
 
 | Component | What it does |
