@@ -24,10 +24,18 @@
   },
   "files": [
     "src",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "peerDependencies": {
     "astro": ">=6.0.0"
   },
-  "homepage": "https://jsr.io/@lossless-group/dididecks-player"
+  "homepage": "https://jsr.io/@lossless-group/dididecks-player",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "bugs": {
+    "url": "https://github.com/lossless-group/dididecks-player/issues"
+  }
 }
