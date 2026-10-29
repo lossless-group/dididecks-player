@@ -62,7 +62,7 @@ on this package and re-exports these components at their old paths.
 
 ## Docs
 
-- Spec: [`context-v/specs/Dididecks-Player-Package.md`](context-v/specs/Dididecks-Player-Package.md)
+- Spec: [`context-v/specs/Init-Dididecks-Player-Package.md`](context-v/specs/Init-Dididecks-Player-Package.md)
 - Changelog: [`changelog/`](changelog/)
 
 ## License

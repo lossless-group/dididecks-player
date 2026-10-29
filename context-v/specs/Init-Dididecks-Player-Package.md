@@ -6,7 +6,7 @@ hex_code: yx885i
 publish: true
 title: "Dididecks Player: the viewer half of DidiDecks as a standalone package"
 lede: "Every Lossless site that shows a deck rebuilt its own viewer. This package is the one copy: static Astro components that play, scroll and print 16:9 decks, with the authoring tools left behind in the shell."
-slug: dididecks-player-package
+slug: init-dididecks-player-package
 at_semantic_version: 0.1.0
 status: In-Progress
 authors:
