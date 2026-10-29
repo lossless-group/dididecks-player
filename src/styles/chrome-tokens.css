@@ -1,0 +1,184 @@
+/* =====================================================================
+ * @dididecks/shell — chrome theming contract
+ *
+ * The full catalog of CSS custom properties the deck-chrome primitives
+ * read. Every color/font here resolves to a CONSUMER token, with a
+ * `currentColor`/`Canvas`-derived fallback so the chrome stays legible
+ * even when a consumer defines nothing. The fallbacks are deliberately
+ * palette-free — they inherit whatever the page already is instead of
+ * asserting a white/grey/black of their own.
+ *
+ * The consumer's tokens reach these routes because the integration
+ * injects `themeStylesheets` at the `page-ssr` stage (see src/index.ts).
+ * Without that injection the shell's own injected routes (/toc, /play)
+ * never import the consumer theme and every lookup below would fall
+ * through to the neutral fallback — legible, but unbranded.
+ *
+ * To re-skin: override any of these tokens at any wrapping element
+ * (commonly `:root` or `:root[data-deck-skin="..."]`). Partial overrides
+ * are fine — un-overridden tokens fall back to the neutral default,
+ * never to undefined.
+ *
+ * Namespace: --ddd-chrome-*
+ * Unique enough to avoid collision with consumer design tokens. If a
+ * conflict surfaces, bump to --dididecks-chrome-* in a minor release.
+ *
+ * Plan of record:
+ *   dididecks-ai/context-v/plans/
+ *   Restore-Calmstorm-Nav-Elegance-as-Themable-Shell-Primitives.md
+ * ===================================================================== */
+
+:root {
+  /* ── Reference discipline ─────────────────────────────────────────
+   * The shell is consumer-agnostic — it has no business shipping color
+   * values (hardcoded white/grey/black) that would override or fight
+   * a client-site's brand. EVERY chrome color and font reference below
+   * resolves to a CONSUMER token via var(). The consumer's theme.css
+   * sets `--color-background`, `--color-surface`, `--color-text`,
+   * `--color-text-muted`, `--color-border`, `--font-body`, `--font-mono`
+   * per their own brand and rebinds them per `[data-mode]`. The chrome
+   * picks up whatever's set; it never asserts its own colors.
+   *
+   * Per the setup-new-dddecks-workspace skill's reach-order discipline:
+   * system tokens reference functional. No hardcoded colors anywhere.
+   * Geometric tokens (radius, sizes, durations) and pure CSS filters
+   * (blur) remain literal — they're tuning, not theme.
+   * ────────────────────────────────────────────────────────────────── */
+
+  /* ── Surface ────────────────────────────────────────────────────── */
+
+  /** Capsule background — sits a step up from the page background. */
+  --ddd-chrome-bg:                var(--color-surface, color-mix(in srgb, currentColor 6%, Canvas));
+
+  /** Button hover-state background — same surface; consumer can elevate further. */
+  --ddd-chrome-bg-hover:          var(--color-surface, color-mix(in srgb, currentColor 6%, Canvas));
+
+  /** Backdrop filter applied behind the capsule (CSS filter, not a color). */
+  --ddd-chrome-backdrop:          blur(8px);
+
+  /* ── Border + radius ────────────────────────────────────────────── */
+
+  /** Border color for capsule + each button. */
+  --ddd-chrome-border:            var(--color-border, color-mix(in srgb, currentColor 18%, transparent));
+
+  /** Corner radius for capsule + buttons. Geometric — not a theme token. */
+  --ddd-chrome-radius:            2px;
+
+  /* ── Type ───────────────────────────────────────────────────────── */
+
+  /** Default button glyph + label color. */
+  --ddd-chrome-fg:                var(--color-text-muted, color-mix(in srgb, currentColor 60%, transparent));
+
+  /** Strong text (counter numeral, button hover, focus). */
+  --ddd-chrome-fg-strong:         var(--color-text, currentColor);
+
+  /** Muted text (counter label, separators). */
+  --ddd-chrome-fg-muted:          var(--color-text-muted, color-mix(in srgb, currentColor 60%, transparent));
+
+  /** Body font for buttons + counter labels. */
+  --ddd-chrome-font:              var(--font-body, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+
+  /** Monospace for tabular-num counters. */
+  --ddd-chrome-font-mono:         var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+
+  /** Counter font-size (pill of "01 / 17 · v2"). */
+  --ddd-chrome-size-counter:      11px;
+
+  /** Button glyph font-size (‹ › ↑ ↓ etc.). */
+  --ddd-chrome-size-button:       12px;
+
+  /* ── Button geometry ────────────────────────────────────────────── */
+
+  /** Button height. Square for arrows; width auto-grows for text buttons. */
+  --ddd-chrome-button-h:          28px;
+
+  /** Square-button width (matches height for arrow buttons). */
+  --ddd-chrome-button-w:          28px;
+
+  /* ── Idle behavior ──────────────────────────────────────────────── */
+
+  /** Resting opacity of the floating chrome. Hover → 1. */
+  --ddd-chrome-idle-opacity:      0.3;
+
+  /** Fade transition duration on hover/focus-within. */
+  --ddd-chrome-fade-ms:           200ms;
+
+  /** z-index of the floating chrome. */
+  --ddd-chrome-z:                 100;
+
+  /* ── Tooltip ────────────────────────────────────────────────────── */
+
+  /** Tooltip background — inverted from the page surface so the pop is high-contrast. */
+  --ddd-chrome-tooltip-bg:        var(--color-text, currentColor);
+
+  /** Tooltip text — inverted from the tooltip bg, reads on the consumer's text color. */
+  --ddd-chrome-tooltip-fg:        var(--color-background, Canvas);
+
+  /** Tooltip corner radius. */
+  --ddd-chrome-tooltip-radius:    4px;
+
+  /** Tooltip padding. */
+  --ddd-chrome-tooltip-pad:       0.4rem 0.65rem;
+
+  /** Tooltip transition duration. */
+  --ddd-chrome-tooltip-fade-ms:   120ms;
+
+  /* ── Play-surface tokens (cinema-style chrome on the /play route) ──
+   * Same reference-only discipline as the floating chrome above. The
+   * play surface intentionally has a heavier visual register, but the
+   * COLORS still come from the consumer's theme — not from hardcoded
+   * cinema-dark RGB values that would fight a light-mode brand.
+   * ───────────────────────────────────────────────────────────────── */
+
+  /** Stage background (what the slide canvas sits on). */
+  --ddd-play-stage-bg:            var(--color-background, Canvas);
+
+  /** Top/bottom chrome bar background. */
+  --ddd-play-chrome-bg:           var(--color-surface, color-mix(in srgb, currentColor 6%, Canvas));
+
+  /** Backdrop filter for chrome bars over the stage. */
+  --ddd-play-chrome-backdrop:     blur(6px);
+
+  /** Chrome bar border (separator from stage). */
+  --ddd-play-chrome-border:       var(--color-border, color-mix(in srgb, currentColor 18%, transparent));
+
+  /** Chrome bar text — muted default. */
+  --ddd-play-chrome-fg:           var(--color-text-muted, color-mix(in srgb, currentColor 60%, transparent));
+
+  /** Chrome bar text — strong (brand label). */
+  --ddd-play-chrome-fg-strong:    var(--color-text, currentColor);
+
+  /** Chrome bar text — extra muted (hints, secondary labels). */
+  --ddd-play-chrome-fg-muted:     var(--color-text-muted, color-mix(in srgb, currentColor 60%, transparent));
+
+  /** Nav-link button bg (resting). */
+  --ddd-play-link-bg:             transparent;
+
+  /** Nav-link button bg (hover). */
+  --ddd-play-link-bg-hover:       var(--color-surface, color-mix(in srgb, currentColor 6%, Canvas));
+
+  /** Nav-link button border. */
+  --ddd-play-link-border:         var(--color-border, color-mix(in srgb, currentColor 18%, transparent));
+
+  /** Nav-link button border on hover. */
+  --ddd-play-link-border-hover:   var(--color-text-muted, color-mix(in srgb, currentColor 60%, transparent));
+
+  /** Canvas drop-shadow (atmospheric, ties to the consumer's text color). */
+  --ddd-play-canvas-shadow:       0 12px 48px color-mix(in srgb, var(--color-text, currentColor) 30%, transparent);
+
+  /** Canvas border radius. */
+  --ddd-play-canvas-radius:       4px;
+}
+
+/* No per-mode override blocks needed.
+ *
+ * The chrome surface + text tokens above all derive from the consumer's
+ * functional `--color-text` via `color-mix()`. Since `--color-text` is
+ * already mode-aware in the consumer's theme (per the theme-system skill
+ * — light/dark/vibrant rebind it via `[data-mode]`), the chrome inherits
+ * the contrast automatically. The capsule reads as low-alpha dark on
+ * light, low-alpha light on dark, low-alpha white on vibrant — driven
+ * by the consumer's own color choices, not by hardcoded fallback values
+ * in this file. Per the setup-new-dddecks-workspace skill's "system
+ * → functional → named" reach order, this is the right tier for chrome
+ * tokens to live at. */

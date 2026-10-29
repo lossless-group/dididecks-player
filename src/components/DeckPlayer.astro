@@ -1,0 +1,274 @@
+---
+/**
+ * DeckPlayer — a single-page play deck: one 16:9 slide at a time.
+ *
+ * Children are <PlayerSlide> elements. The player shows one, and gives:
+ *   - ← → / PageUp PageDown / Space Shift+Space   previous / next
+ *   - Home / End                                    first / last
+ *   - T or J                                        table of contents (skip to any slide)
+ *   - F                                             fullscreen
+ *   - Esc                                           close the ToC
+ *   - swipe left / right on touch screens
+ *   - #N in the URL                                 open (and share) a given slide
+ * Modifier chords (Cmd/Ctrl/Alt) pass through to the browser. Printing lays
+ * every slide out one per page, so ⌘P gives a PDF of the whole deck.
+ *
+ * Emits `deck:section-changed` { index, total, isFirst, isLast } on window,
+ * the same event the scroll deck (PageAsDeckWrapper) uses.
+ *
+ * Theming reads only `--ddd-chrome-*` tokens (styles/chrome-tokens.css),
+ * plus `--ddp-fullscreen-bg` for the fullscreen surround.
+ * The slides themselves are static; the only script is the player's own.
+ */
+import "../styles/chrome-tokens.css";
+
+export interface Props {
+  /** Deck title, for the ToC heading and the region label. */
+  title?: string;
+  /** Where "Back" goes. Omit to hide it. */
+  backHref?: string;
+  backLabel?: string;
+  /** A PDF of the deck. Omit to hide the download button. */
+  pdfHref?: string;
+  /** Viewport height the chrome bar takes, for sizing the stage. */
+  chromeHeight?: string;
+}
+
+const { title = "Deck", backHref, backLabel = "Back", pdfHref, chromeHeight = "4.5rem" } = Astro.props;
+---
+
+<div class="ddp" data-ddp role="region" aria-roledescription="slide deck" aria-label={title} style={`--ddp-chrome-h: ${chromeHeight}`}>
+  <div class="ddp-stage" data-ddp-stage>
+    <slot />
+  </div>
+
+  <nav class="ddp-bar" aria-label="Deck controls">
+    <div class="ddp-bar__side">
+      {backHref && <a class="ddp-btn ddp-btn--text" href={backHref}>← {backLabel}</a>}
+    </div>
+    <div class="ddp-bar__center">
+      <button type="button" class="ddp-btn" data-ddp-prev aria-label="Previous slide">‹</button>
+      <button type="button" class="ddp-counter" data-ddp-toc-open aria-label="Contents">
+        <span data-ddp-index>1</span> / <span data-ddp-total>1</span>
+      </button>
+      <button type="button" class="ddp-btn" data-ddp-next aria-label="Next slide">›</button>
+    </div>
+    <div class="ddp-bar__side ddp-bar__side--end">
+      <button type="button" class="ddp-btn ddp-btn--text" data-ddp-toc-open>Contents</button>
+      <button type="button" class="ddp-btn ddp-btn--text" data-ddp-fullscreen>Fullscreen</button>
+      {pdfHref && <a class="ddp-btn ddp-btn--text" href={pdfHref} download>PDF</a>}
+    </div>
+  </nav>
+
+  <p class="ddp-sr" aria-live="polite" data-ddp-live></p>
+
+  <dialog class="ddp-toc" data-ddp-toc aria-label="Contents">
+    <div class="ddp-toc__head">
+      <p class="ddp-toc__title">{title}</p>
+      <button type="button" class="ddp-btn ddp-btn--text" data-ddp-toc-close>Close</button>
+    </div>
+    <ol class="ddp-toc__list" data-ddp-toc-list></ol>
+  </dialog>
+</div>
+
+<style>
+  .ddp {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    font-family: var(--ddd-chrome-font, system-ui, sans-serif);
+  }
+  .ddp-stage {
+    width: min(100%, calc((100dvh - var(--ddp-chrome-h)) * 16 / 9));
+    margin-inline: auto;
+    touch-action: pan-y;
+  }
+  /* One slide at a time on screen; print shows them all (below). */
+  .ddp-stage > :global(.ddp-slide) { display: none; }
+  .ddp-stage > :global(.ddp-slide.is-active) { display: block; }
+  .ddp-stage :global(.slide-canvas) { border-radius: var(--ddd-chrome-radius, 0.5rem); }
+
+  .ddp-bar {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 0.75rem;
+    width: min(100%, calc((100dvh - var(--ddp-chrome-h)) * 16 / 9));
+    margin-inline: auto;
+    color: var(--ddd-chrome-fg, currentColor);
+  }
+  .ddp-bar__side { display: flex; gap: 0.25rem; align-items: center; }
+  .ddp-bar__side--end { justify-content: flex-end; }
+  .ddp-bar__center { display: flex; gap: 0.25rem; align-items: center; }
+
+  .ddp-btn, .ddp-counter {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.25rem;
+    height: 2.25rem;
+    padding: 0 0.6rem;
+    border: 1px solid var(--ddd-chrome-border, rgba(0, 0, 0, 0.12));
+    border-radius: var(--ddd-chrome-radius, 0.5rem);
+    background: var(--ddd-chrome-bg, transparent);
+    color: inherit;
+    font: inherit;
+    font-size: 0.875rem;
+    line-height: 1;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .ddp-btn:hover, .ddp-counter:hover { background: var(--ddd-chrome-bg-hover, rgba(0, 0, 0, 0.05)); }
+  .ddp-btn[disabled] { opacity: 0.35; cursor: default; }
+  .ddp-btn--text { border-color: transparent; background: transparent; }
+  .ddp-counter { font-family: var(--ddd-chrome-font-mono, ui-monospace, monospace); font-size: 0.8125rem; min-width: 5rem; }
+
+  .ddp-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  .ddp-toc {
+    width: min(32rem, calc(100vw - 2rem));
+    max-height: min(40rem, calc(100dvh - 4rem));
+    padding: 1.25rem;
+    border: 1px solid var(--ddd-chrome-border, rgba(0, 0, 0, 0.12));
+    border-radius: var(--ddd-chrome-radius, 0.75rem);
+    background: var(--ddd-chrome-bg, Canvas);
+    color: var(--ddd-chrome-fg-strong, var(--color-text, CanvasText));
+  }
+  .ddp-toc::backdrop { background: rgba(0, 0, 0, 0.45); }
+  .ddp-toc__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+  .ddp-toc__title { margin: 0; font-weight: 600; }
+  .ddp-toc__list { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.15rem; }
+  .ddp-toc__list :global(button) {
+    display: flex; gap: 0.75rem; width: 100%; padding: 0.5rem 0.6rem;
+    border: 0; border-radius: 0.375rem; background: transparent; color: inherit;
+    font: inherit; text-align: left; cursor: pointer;
+  }
+  .ddp-toc__list :global(button:hover),
+  .ddp-toc__list :global(button[aria-current="true"]) { background: var(--ddd-chrome-bg-hover, rgba(0, 0, 0, 0.06)); }
+  .ddp-toc__list :global(.ddp-toc__n) { font-family: var(--ddd-chrome-font-mono, ui-monospace, monospace); opacity: 0.6; min-width: 2ch; }
+
+  /* Fullscreen: the slide takes the screen, the bar stays below it. */
+  .ddp:fullscreen { justify-content: center; padding: 1rem; background: var(--ddp-fullscreen-bg, #05070d); color: #e8ecf2; }
+  .ddp:fullscreen .ddp-stage,
+  .ddp:fullscreen .ddp-bar { width: min(100%, calc((100dvh - 5rem) * 16 / 9)); }
+
+  @media print {
+    .ddp-bar, .ddp-toc, .ddp-sr { display: none !important; }
+    .ddp-stage { width: 100%; }
+    .ddp-stage > :global(.ddp-slide) { display: block !important; break-after: page; page-break-after: always; }
+    .ddp-stage > :global(.ddp-slide:last-child) { break-after: auto; page-break-after: auto; }
+    .ddp-stage :global(.slide-canvas) { border-radius: 0; }
+  }
+</style>
+
+<script>
+  function setup(root: HTMLElement) {
+    const slides = Array.from(root.querySelectorAll<HTMLElement>("[data-ddp-slide]"));
+    const total = slides.length;
+    if (!total) return;
+    const $ = <T extends Element>(sel: string) => root.querySelector<T>(sel);
+    const prevBtn = $<HTMLButtonElement>("[data-ddp-prev]");
+    const nextBtn = $<HTMLButtonElement>("[data-ddp-next]");
+    const indexEl = $<HTMLElement>("[data-ddp-index]");
+    const totalEl = $<HTMLElement>("[data-ddp-total]");
+    const live = $<HTMLElement>("[data-ddp-live]");
+    const toc = $<HTMLDialogElement>("[data-ddp-toc]");
+    const tocList = $<HTMLOListElement>("[data-ddp-toc-list]");
+    if (totalEl) totalEl.textContent = String(total);
+
+    const titleOf = (i: number) => slides[i].dataset.title || `Slide ${i + 1}`;
+    tocList?.replaceChildren(
+      ...slides.map((_, i) => {
+        const li = document.createElement("li");
+        const b = document.createElement("button");
+        b.type = "button";
+        b.dataset.ddpGoto = String(i);
+        b.innerHTML = `<span class="ddp-toc__n">${i + 1}</span><span></span>`;
+        (b.lastElementChild as HTMLElement).textContent = titleOf(i);
+        li.append(b);
+        return li;
+      }),
+    );
+
+    let current = -1;
+    function show(i: number, push = true) {
+      const n = Math.max(0, Math.min(total - 1, i));
+      if (n === current) return;
+      current = n;
+      slides.forEach((s, k) => s.classList.toggle("is-active", k === n));
+      // Warm the neighbours so the next click doesn't wait on the network.
+      [n - 1, n + 1].forEach((k) => slides[k]?.querySelectorAll("img").forEach((img) => (img.loading = "eager")));
+      if (indexEl) indexEl.textContent = String(n + 1);
+      if (prevBtn) prevBtn.disabled = n === 0;
+      if (nextBtn) nextBtn.disabled = n === total - 1;
+      if (live) live.textContent = `Slide ${n + 1} of ${total}: ${titleOf(n)}`;
+      tocList?.querySelectorAll("button").forEach((b, k) => b.setAttribute("aria-current", String(k === n)));
+      if (push) history.replaceState(null, "", `#${n + 1}`);
+      window.dispatchEvent(new CustomEvent("deck:section-changed", { detail: { index: n, total, isFirst: n === 0, isLast: n === total - 1 } }));
+    }
+
+    const fromHash = () => {
+      const n = parseInt(location.hash.slice(1), 10);
+      return Number.isFinite(n) ? n - 1 : 0;
+    };
+    show(fromHash(), false);
+    window.addEventListener("hashchange", () => show(fromHash(), false));
+
+    const openToc = () => { if (toc && !toc.open) toc.showModal(); };
+    const closeToc = () => toc?.close();
+    const fullscreen = () => {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else root.requestFullscreen?.().catch(() => {});
+    };
+
+    prevBtn?.addEventListener("click", () => show(current - 1));
+    nextBtn?.addEventListener("click", () => show(current + 1));
+    root.querySelectorAll("[data-ddp-toc-open]").forEach((b) => b.addEventListener("click", openToc));
+    root.querySelector("[data-ddp-toc-close]")?.addEventListener("click", closeToc);
+    root.querySelector("[data-ddp-fullscreen]")?.addEventListener("click", fullscreen);
+    tocList?.addEventListener("click", (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-ddp-goto]");
+      if (!b) return;
+      show(Number(b.dataset.ddpGoto));
+      closeToc();
+    });
+
+    window.addEventListener("deck:section-goto", (e) => {
+      const i = (e as CustomEvent).detail?.index;
+      if (typeof i === "number") show(i);
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (toc?.open && e.key !== "Escape") return;
+      switch (e.key) {
+        case "ArrowRight": case "PageDown": show(current + 1); break;
+        case "ArrowLeft": case "PageUp": show(current - 1); break;
+        case " ": show(current + (e.shiftKey ? -1 : 1)); break;
+        case "Home": show(0); break;
+        case "End": show(total - 1); break;
+        case "t": case "T": case "j": case "J": openToc(); break;
+        case "f": case "F": fullscreen(); break;
+        case "Escape": closeToc(); return;
+        default: return;
+      }
+      e.preventDefault();
+    });
+
+    // Swipe on touch screens.
+    const stage = $<HTMLElement>("[data-ddp-stage]");
+    let x0: number | null = null;
+    stage?.addEventListener("pointerdown", (e) => { if (e.pointerType !== "mouse") x0 = e.clientX; });
+    stage?.addEventListener("pointerup", (e) => {
+      if (x0 === null) return;
+      const dx = e.clientX - x0;
+      x0 = null;
+      if (Math.abs(dx) > 50) show(current + (dx < 0 ? 1 : -1));
+    });
+  }
+
+  document.querySelectorAll<HTMLElement>("[data-ddp]").forEach(setup);
+</script>

@@ -1,0 +1,141 @@
+---
+/**
+ * ModeToggle — three-mode site-chrome toggle (light → dark → vibrant).
+ *
+ * Promoted from chroma-decks/src/components/basics/ModeToggle.astro on
+ * 2026-06-06 (plan: dididecks-ai/context-v/plans/
+ *               Lift-Chroma-Decks-Generic-Code-into-Shared-Shell.md, Phase 2).
+ *
+ * Differences from the chroma original:
+ *   - `client` is a required prop — used as the localStorage namespace by
+ *     mode-switcher so multiple decks on the same domain don't collide.
+ *   - CSS classes prefixed `ddd-mode-toggle-*`.
+ *   - Theming reads through `--ddd-mode-toggle-*` tokens with fallbacks
+ *     to consumer semantic tokens.
+ *   - Inline-imports the runtime mode-switcher; no separate import path.
+ *
+ * Consumer integration:
+ *
+ *   import ModeToggle from "@lossless-group/dididecks-player/components/ModeToggle.astro";
+ *
+ *   <ModeToggle client="humain-vc-decks" defaultMode="light" />
+ */
+
+import type { Mode } from "../runtime/mode-switcher.ts";
+
+interface Props {
+  /** Per-client namespace for the mode-switcher's localStorage key. Required. */
+  client: string;
+  /** Default mode when nothing is stored. Default "light". */
+  defaultMode?: Mode;
+  /** Whether to honor prefers-color-scheme on first visit. Default false. */
+  respectSystemPreference?: boolean;
+}
+
+const { client, defaultMode = "light", respectSystemPreference = false } = Astro.props as Props;
+
+const config = JSON.stringify({ client, defaultMode, respectSystemPreference });
+---
+
+<button
+  type="button"
+  class="ddd-mode-toggle"
+  data-ddd-mode-toggle
+  data-ddd-mode-config={config}
+  aria-label="Cycle color mode"
+  title="Cycle: light → dark → vibrant"
+>
+  <svg class="ddd-mt-icon ddd-mt-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+  </svg>
+  <svg class="ddd-mt-icon ddd-mt-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+  </svg>
+  <svg class="ddd-mt-icon ddd-mt-icon-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" focusable="false">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M12 2l2.39 6.26L21 9.27l-4.5 4.38L17.48 21 12 17.77 6.52 21 7.5 13.65 3 9.27l6.61-1.01L12 2z" />
+  </svg>
+</button>
+
+<script>
+  import { createModeSwitcher } from "../runtime/mode-switcher.ts";
+
+  const NEXT_LABEL: Record<string, string> = { light: "dark", dark: "vibrant", vibrant: "light" };
+
+  function syncAria(): void {
+    if (typeof window === "undefined" || !window.modeSwitcher) return;
+    const current = window.modeSwitcher.getCurrentMode();
+    const next = NEXT_LABEL[current] ?? "dark";
+    document.querySelectorAll("[data-ddd-mode-toggle]").forEach((btn) => {
+      btn.setAttribute("aria-label", `Color mode: ${current}. Click for ${next}.`);
+      btn.setAttribute("title", `Mode: ${current} (click for ${next})`);
+    });
+  }
+
+  function bind(): void {
+    document.querySelectorAll("[data-ddd-mode-toggle]").forEach((btn) => {
+      const cfgRaw = btn.getAttribute("data-ddd-mode-config");
+      if (cfgRaw) {
+        try {
+          const cfg = JSON.parse(cfgRaw);
+          createModeSwitcher(cfg);
+        } catch {
+          /* malformed config — ignore */
+        }
+      }
+      btn.addEventListener("click", () => {
+        window.modeSwitcher?.toggleMode();
+      });
+    });
+    window.addEventListener("mode-change", syncAria);
+    syncAria();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bind);
+  } else {
+    bind();
+  }
+</script>
+
+<style is:global>
+  .ddd-mode-toggle {
+    position: fixed;
+    top: var(--ddd-mode-toggle-top, 16px);
+    right: var(--ddd-mode-toggle-right, 16px);
+    z-index: 50;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--ddd-mode-toggle-size, 2.5rem);
+    height: var(--ddd-mode-toggle-size, 2.5rem);
+    padding: 0.5rem;
+    border-radius: var(--ddd-mode-toggle-radius, var(--radius, 0.5rem));
+    border: 1px solid var(--ddd-mode-toggle-border, var(--color-border, rgba(0, 0, 0, 0.1)));
+    background: var(--ddd-mode-toggle-bg, var(--color-background, white));
+    color: var(--ddd-mode-toggle-fg, var(--color-text, #111));
+    cursor: pointer;
+    transition:
+      color 160ms ease,
+      border-color 160ms ease,
+      background-color 160ms ease,
+      box-shadow 160ms ease;
+  }
+  .ddd-mode-toggle:hover {
+    color: var(--ddd-mode-toggle-hover-fg, var(--color-primary, var(--color-accent-1, #29a380)));
+    border-color: var(--ddd-mode-toggle-hover-border, var(--color-primary, var(--color-accent-1, #29a380)));
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--ddd-mode-toggle-hover-glow, var(--color-primary, #29a380)) 12%, transparent);
+  }
+  .ddd-mode-toggle:focus-visible {
+    outline: 2px solid var(--ddd-mode-toggle-hover-fg, var(--color-primary, #29a380));
+    outline-offset: 2px;
+  }
+  .ddd-mode-toggle .ddd-mt-icon {
+    width: 1.25rem;
+    height: 1.25rem;
+    display: none;
+  }
+
+  html[data-mode="light"]   .ddd-mode-toggle .ddd-mt-icon-sun   { display: block; }
+  html[data-mode="dark"]    .ddd-mode-toggle .ddd-mt-icon-moon  { display: block; }
+  html[data-mode="vibrant"] .ddd-mode-toggle .ddd-mt-icon-star  { display: block; }
+</style>

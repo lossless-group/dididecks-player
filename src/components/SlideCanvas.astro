@@ -1,0 +1,126 @@
+---
+/**
+ * SlideCanvas — fixed-aspect 16:9 wrapper for a single play slide.
+ *
+ * PURE CSS — no JS. Per @dididecks/shell contract: rendered play decks
+ * must be static HTML/CSS/Tailwind. JS is acceptable in scroll decks
+ * but NOT in play decks; this means the scaling pipeline itself has to
+ * work without scripts.
+ *
+ * Approach:
+ *   - Canvas gets `container-type: size`, making it a query container
+ *     for both its inline (width) and block (height) size.
+ *   - Stage is 1920×1080 absolute-positioned at top-left.
+ *   - Stage's `transform: scale()` is computed from canvas's container
+ *     query units. `100cqw / 1920px` gives the unitless ratio that
+ *     scales the 1920px design width down to whatever the canvas's
+ *     inline-size is (and similarly for block-size / 1080px).
+ *   - `min(...)` picks whichever axis is the binding constraint —
+ *     letterboxes correctly when canvas aspect ≠ 16:9.
+ *
+ * The route's [slot].astro is responsible for sizing the canvas
+ * (`width: min(100%, calc((100vh - 7rem) * 16/9))` + max-height); this
+ * component just translates that into a scaled 1920×1080 stage.
+ *
+ * Force-resolve note: scroll-deck reveal animations (`[data-reveal]` /
+ * `.reveal-item`) depend on IntersectionObserver, which doesn't run in
+ * the canvas. The global rule below pins their visible state so slides
+ * authored with reveal opt-ins still render statically.
+ */
+export interface Props {
+  designWidth?: number;
+  designHeight?: number;
+  title?: string;
+  background?: string;
+}
+
+const {
+  designWidth = 1920,
+  designHeight = 1080,
+  title,
+  background,
+} = Astro.props;
+---
+
+<div
+  class="slide-canvas"
+  data-slide-canvas
+  data-design-width={designWidth}
+  data-design-height={designHeight}
+  aria-label={title}
+  style={`
+    --ddd-design-w: ${designWidth}px;
+    --ddd-design-h: ${designHeight}px;
+    ${background ? `--canvas-bg: ${background};` : ""}
+  `}
+>
+  <div class="slide-canvas__stage">
+    <slot />
+  </div>
+  {/* Optional wash composited over the slide (from calmstorm-decks). Inert
+      unless --slide-backdrop-image and --slide-backdrop-opacity are set. */}
+  <div class="slide-canvas__wash" aria-hidden="true"></div>
+</div>
+
+<style is:global>
+  /* Force-resolve scroll-deck reveal animations inside the canvas.
+     [data-reveal] + .reveal-item depend on IntersectionObserver wiring
+     that doesn't exist in play mode. Without these overrides they stay
+     opacity:0 forever and the slide looks blank. */
+  .slide-canvas [data-reveal],
+  .slide-canvas .reveal-item {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+
+  /* Sections in scroll decks often use `min-height: var(--deck-height, 100vh)`.
+     Inside a fixed canvas, the slide is constrained by the stage's height,
+     not the viewport. Reset so content lays out against stage bounds. */
+  .slide-canvas .slide,
+  .slide-canvas .play-slide {
+    min-height: 100% !important;
+    height: 100% !important;
+  }
+</style>
+
+<style>
+  .slide-canvas {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    background: var(--canvas-bg, var(--color-surface, #ffffff));
+    container-type: size;
+  }
+
+  .slide-canvas__stage {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: var(--ddd-design-w, 1920px);
+    height: var(--ddd-design-h, 1080px);
+    transform-origin: center center;
+    /* Pure CSS scale: derive the scale ratio from container-query units.
+       100cqw = canvas inline-size in px; / 1920px = unitless ratio.
+       min() picks the limiting axis; translate(-50%, -50%) centres the
+       stage, so a non-16:9 canvas letterboxes evenly on both sides. */
+    transform: translate(-50%, -50%) scale(min(
+      calc(100cqw / var(--ddd-design-w, 1920px)),
+      calc(100cqh / var(--ddd-design-h, 1080px))
+    ));
+  }
+
+  .slide-canvas__wash {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    background-image: var(--slide-backdrop-image, none);
+    background-size: var(--slide-backdrop-size, cover);
+    background-position: var(--slide-backdrop-position, center);
+    background-repeat: no-repeat;
+    opacity: var(--slide-backdrop-opacity, 0);
+    mix-blend-mode: multiply;
+  }
+</style>

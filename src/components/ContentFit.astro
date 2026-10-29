@@ -1,0 +1,176 @@
+---
+/**
+ * ContentFit — measure children at natural size, apply transform: scale() so
+ * they fill the available host area. The author sizes content at COMFORTABLE
+ * reading scale (like a normal web page); ContentFit handles the canvas math.
+ *
+ * Why this exists: the historical pattern was to hand-tune font-sizes, paddings,
+ * and gaps to fit the 1920×1080 canvas. That's a fight every iteration. With
+ * ContentFit, you pick a swappable info-display pattern, drop it in, and the
+ * margin / scale is solved by the wrapper.
+ *
+ * Mechanic:
+ *   1. Host has fixed bounds (the SlideCanvas content area).
+ *   2. Content is measured at its natural width × height.
+ *   3. scale = min(hostW / naturalW, hostH / naturalH), clamped to [min, max].
+ *   4. Content is positioned absolutely and translated to center within host.
+ *   5. ResizeObserver re-fits on host resize; MutationObserver re-fits on
+ *      content changes (e.g., async image decode).
+ *
+ * The transform applies to the .cfit-content wrapper, NOT to descendants
+ * individually — so child layout (grid, flex, etc.) is preserved and only
+ * the final rendered size scales.
+ */
+interface Props {
+  /** Allow scaling above 1× to fill empty space. Default: true. */
+  upscale?: boolean;
+  /** Center content within the host when it's smaller than host. Default: true. */
+  center?: boolean;
+  /** Hard upper bound on scale, in case the host is huge relative to content. Default: 3. */
+  maxScale?: number;
+  /** Hard lower bound on scale, in case the host is tiny. Default: 0.25. */
+  minScale?: number;
+  /** Extra inset (in pixels) around the content within the host. Default: 0. */
+  padding?: number;
+  /** Pass-through class for the host element. */
+  class?: string;
+}
+const {
+  upscale = true,
+  center = true,
+  maxScale = 3,
+  minScale = 0.25,
+  padding = 0,
+  class: hostClass = "",
+} = Astro.props;
+---
+
+<div
+  class:list={["cfit-host", hostClass]}
+  data-cfit-center={center ? "1" : "0"}
+  data-cfit-upscale={upscale ? "1" : "0"}
+  data-cfit-max={String(maxScale)}
+  data-cfit-min={String(minScale)}
+  data-cfit-pad={String(padding)}
+>
+  <div class="cfit-content">
+    <slot />
+  </div>
+</div>
+
+<style>
+  .cfit-host {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+  .cfit-content {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: top left;
+    /* Hint to the compositor — transform-only updates stay off the main thread. */
+    will-change: transform;
+  }
+</style>
+
+<script>
+  type Host = HTMLElement & { __cfitObservers?: { ro: ResizeObserver; mo: MutationObserver } };
+
+  function fit(host: Host) {
+    const content = host.querySelector<HTMLElement>(":scope > .cfit-content");
+    if (!content) return;
+
+    // Read natural size — temporarily clear the transform so scrollWidth/Height
+    // report the un-scaled dimensions.
+    const prevTransform = content.style.transform;
+    content.style.transform = "none";
+    const naturalW = content.scrollWidth;
+    const naturalH = content.scrollHeight;
+    content.style.transform = prevTransform;
+
+    if (naturalW === 0 || naturalH === 0) return;  // not yet laid out
+
+    const pad      = parseFloat(host.dataset.cfitPad ?? "0") || 0;
+    const hostW    = host.clientWidth  - pad * 2;
+    const hostH    = host.clientHeight - pad * 2;
+    if (hostW <= 0 || hostH <= 0) return;
+
+    const maxScale = parseFloat(host.dataset.cfitMax ?? "3");
+    const minScale = parseFloat(host.dataset.cfitMin ?? "0.25");
+    const upscale  = host.dataset.cfitUpscale === "1";
+    const center   = host.dataset.cfitCenter === "1";
+
+    let scale = Math.min(hostW / naturalW, hostH / naturalH);
+    if (!upscale) scale = Math.min(scale, 1);
+    scale = Math.max(minScale, Math.min(maxScale, scale));
+
+    const finalW = naturalW * scale;
+    const finalH = naturalH * scale;
+    const x = (center ? (hostW - finalW) / 2 : 0) + pad;
+    const y = (center ? (hostH - finalH) / 2 : 0) + pad;
+
+    content.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+    host.dataset.cfitScale = scale.toFixed(3);
+    host.dataset.cfitNaturalW = String(naturalW);
+    host.dataset.cfitNaturalH = String(naturalH);
+  }
+
+  function attach(host: Host) {
+    if (host.__cfitObservers) return;          // idempotent — survive HMR / re-init
+
+    fit(host);
+    const ro = new ResizeObserver(() => fit(host));
+    ro.observe(host);
+
+    const content = host.querySelector<HTMLElement>(":scope > .cfit-content");
+    /*
+     * Ignore the observer's own writes.
+     *
+     * `fit()` sets `content.style.transform` three times per run — it clears
+     * the transform to read the natural size, restores it, then applies the
+     * final one. With `attributes: true` on that same element, every write
+     * re-triggered this observer, which called `fit()` again: an unbounded
+     * loop that pinned the main thread. The slide never painted — it rendered
+     * white and the tab hung with no error, which is exactly how it presented.
+     *
+     * Style mutations targeting the content element are self-inflicted and
+     * must not re-fit. Children, text and other attributes still do.
+     */
+    const mo = new MutationObserver((records) => {
+      const selfInflicted = records.every(
+        (r) => r.type === "attributes" && r.target === content && r.attributeName === "style",
+      );
+      if (selfInflicted) return;
+      fit(host);
+    });
+    if (content) mo.observe(content, { childList: true, subtree: true, attributes: true, characterData: true });
+
+    // Re-fit after web fonts settle (avoids the initial fit being computed
+    // against a fallback metric).
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(() => fit(host));
+    }
+
+    // Re-fit after images finish decoding (headshots, logos).
+    host.querySelectorAll<HTMLImageElement>("img").forEach((img) => {
+      if (!img.complete) img.addEventListener("load", () => fit(host), { once: true });
+    });
+
+    host.__cfitObservers = { ro, mo };
+  }
+
+  function init() {
+    document.querySelectorAll<Host>(".cfit-host").forEach(attach);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+
+  // Astro view transitions / hot module reloads — re-attach on swap.
+  document.addEventListener("astro:page-load", init);
+</script>

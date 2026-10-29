@@ -1,0 +1,25 @@
+/* =====================================================================
+ * @dididecks/shell — chrome theme defaults (pass-through to contract)
+ *
+ * This file used to carry calmstorm-flavored hardcoded white/grey/black
+ * values as a "neutral default" for consumers that didn't set their own.
+ * That was wrong — the shell has no business shipping color values that
+ * fight a client-site's brand. All chrome color and font references now
+ * live in `../chrome-tokens.css` and resolve to the CONSUMER's functional
+ * tokens (`--color-background`, `--color-surface`, `--color-text`,
+ * `--color-text-muted`, `--color-border`, `--font-body`, `--font-mono`).
+ *
+ * This file is kept only as a stable import path — existing consumers
+ * (PlayChrome, the /play routes, etc.) import it via
+ *   `import "../styles/themes/neutral.css"`
+ * and we don't want to churn every importer. It simply re-imports the
+ * contract; there are no per-mode override blocks, no hardcoded colors,
+ * no font stacks. The consumer's `[data-mode]` cascade on `--color-*`
+ * tokens drives all chrome mode-awareness automatically.
+ *
+ * Plan of record:
+ *   dididecks-ai/context-v/plans/
+ *   Restore-Calmstorm-Nav-Elegance-as-Themable-Shell-Primitives.md
+ * ===================================================================== */
+
+@import "../chrome-tokens.css";

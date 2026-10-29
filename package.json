@@ -1,0 +1,33 @@
+{
+  "name": "@lossless-group/dididecks-player",
+  "version": "0.1.0",
+  "description": "DidiDecks player: 16:9 slide canvas, play deck, scroll deck, chrome, paginator and print layout for Astro. Static components, scoped CSS, no Tailwind.",
+  "type": "module",
+  "license": "MIT",
+  "author": "The Lossless Group",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lossless-group/dididecks-player.git"
+  },
+  "keywords": [
+    "astro",
+    "astro-component",
+    "slides",
+    "deck",
+    "presentation",
+    "dididecks"
+  ],
+  "exports": {
+    "./components/*": "./src/components/*",
+    "./runtime/*": "./src/runtime/*",
+    "./styles/*": "./src/styles/*"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "peerDependencies": {
+    "astro": ">=6.0.0"
+  },
+  "homepage": "https://jsr.io/@lossless-group/dididecks-player"
+}

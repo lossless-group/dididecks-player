@@ -1,0 +1,479 @@
+---
+/**
+ * DeckChrome — themable floating navigation chrome for /play and /scroll.
+ *
+ * Replaces v0.1's PlayChrome (heavy dark bottom bar) with a calmstorm-
+ * flavored floating capsule fixed bottom-right. Idle-fades to
+ * `--ddd-chrome-idle-opacity`; lights up on hover / focus-within.
+ *
+ * STRUCTURE / BEHAVIOR / STYLING are separated:
+ *   - Structure + ARIA  → JSX here
+ *   - Behavior          → inline keyboard handler (v0.1 contract preserved)
+ *                         + button-click → custom-event dispatch (ddd:section-*)
+ *   - Styling           → CSS reads `--ddd-chrome-*` tokens, never sets
+ *                         visual values directly. Override at any wrapping
+ *                         element to re-skin. Neutral defaults via
+ *                         `apps/deck-shell/src/styles/themes/neutral.css`.
+ *
+ * Two axes of navigation (both optional, both rendered as button groups):
+ *   - PRIMARY:   ‹ ›  slot prev/next. Visible always. Keyboard ← / →.
+ *   - SECONDARY: ↑ ↓  variant cycling. Visible only if `showVariantNav`.
+ *                     No default keyboard binding (presenter remotes ship
+ *                     ← / →, not ↑ ↓; cycling is a deliberate action).
+ *
+ * Keyboard contract (preserved verbatim from v0.1 PlayChrome):
+ *   ← / PageUp / Shift+Space  → prev slot
+ *   → / PageDown / Space      → next slot
+ *   Home                      → first slot
+ *   End                       → last slot
+ *   F                         → toggle fullscreen
+ *   C                         → toggle chrome visibility
+ *   T                         → jump to TOC
+ *   Esc                       → exit fullscreen + restore chrome
+ *
+ * Event contract (for Phase-2 scroll-side PageAsDeckWrapper):
+ *   listens   ddd:section-changed { index, isFirst, isLast, sectionId? }
+ *             → updates data-at-first / data-at-last on the nav root
+ *   dispatches ddd:section-prev   (when ↑ button clicked, only if no href)
+ *             ddd:section-next   (when ↓ button clicked, only if no href)
+ *
+ * Plan of record:
+ *   dididecks-ai/context-v/plans/
+ *   Restore-Calmstorm-Nav-Elegance-as-Themable-Shell-Primitives.md
+ */
+
+interface Props {
+  /** Slot context (required). */
+  slot: string;
+  totalSlots: number;
+  variantLabel: string;
+
+  /** Primary axis — slot prev/next. */
+  prevHref: string | null;
+  nextHref: string | null;
+  firstHref: string;
+  lastHref: string;
+  tocHref: string;
+
+  /** Secondary axis — variant cycling (optional). */
+  prevVariantHref?: string | null;
+  nextVariantHref?: string | null;
+  /** e.g. "v2 of 4" — appended to the counter pill. */
+  variantCounter?: string;
+  /** When true, variant arrows never visually disable (cycling siblings). */
+  cycling?: boolean;
+
+  /** Toggle the variant-axis button group. Default false. */
+  showVariantNav?: boolean;
+  /** Show a help (?) button. Default false until Help overlay ships. */
+  showHelp?: boolean;
+  /** Attach the document keydown listener. Default true. */
+  enableKeyboard?: boolean;
+}
+
+const {
+  slot,
+  totalSlots,
+  variantLabel,
+  prevHref,
+  nextHref,
+  firstHref,
+  lastHref,
+  tocHref,
+  prevVariantHref = null,
+  nextVariantHref = null,
+  variantCounter,
+  cycling = false,
+  showVariantNav = false,
+  showHelp = false,
+  enableKeyboard = true,
+} = Astro.props as Props;
+
+const slotPadded = String(slot).padStart(2, "0");
+const totalPadded = String(totalSlots).padStart(2, "0");
+
+const tip = {
+  prevSlot:    "← Previous slot",
+  nextSlot:    "→ Next slot",
+  toc:         "T — Table of contents",
+  prevVariant: "↑ Previous variant",
+  nextVariant: "↓ Next variant",
+  help:        "? — Help",
+};
+---
+
+<nav
+  class="ddd-chrome"
+  data-ddd-chrome-root
+  data-at-first={prevHref ? "false" : "true"}
+  data-at-last={nextHref ? "false" : "true"}
+  aria-label="Deck navigation"
+>
+  <span class="ddd-chrome__counter" aria-hidden="false">
+    <span class="ddd-chrome__slot-num">{slotPadded}</span>
+    <span class="ddd-chrome__sep">/</span>
+    <span class="ddd-chrome__total">{totalPadded}</span>
+    <span class="ddd-chrome__variant">· {variantLabel}</span>
+    {variantCounter && (
+      <span class="ddd-chrome__variant-counter">· {variantCounter}</span>
+    )}
+  </span>
+
+  {showVariantNav && (
+    <span class="ddd-chrome__group" data-axis="variant">
+      <a
+        href={prevVariantHref ?? "#"}
+        class:list={[
+          "ddd-chrome__btn",
+          !prevVariantHref && !cycling && "is-disabled",
+        ]}
+        data-tooltip={tip.prevVariant}
+        data-nav="variant-prev"
+        aria-label={tip.prevVariant}
+        aria-disabled={!prevVariantHref && !cycling ? "true" : "false"}
+      >↑</a>
+      <a
+        href={nextVariantHref ?? "#"}
+        class:list={[
+          "ddd-chrome__btn",
+          !nextVariantHref && !cycling && "is-disabled",
+        ]}
+        data-tooltip={tip.nextVariant}
+        data-nav="variant-next"
+        aria-label={tip.nextVariant}
+        aria-disabled={!nextVariantHref && !cycling ? "true" : "false"}
+      >↓</a>
+    </span>
+  )}
+
+  <span class="ddd-chrome__group" data-axis="slot">
+    <a
+      href={prevHref ?? "#"}
+      class:list={["ddd-chrome__btn", !prevHref && "is-disabled"]}
+      data-tooltip={tip.prevSlot}
+      data-nav="slot-prev"
+      aria-label={tip.prevSlot}
+      aria-disabled={!prevHref ? "true" : "false"}
+    >‹</a>
+    <a
+      href={tocHref}
+      class="ddd-chrome__btn ddd-chrome__btn--text"
+      data-tooltip={tip.toc}
+      data-nav="toc"
+      aria-label={tip.toc}
+    >TOC</a>
+    <a
+      href={nextHref ?? "#"}
+      class:list={["ddd-chrome__btn", !nextHref && "is-disabled"]}
+      data-tooltip={tip.nextSlot}
+      data-nav="slot-next"
+      aria-label={tip.nextSlot}
+      aria-disabled={!nextHref ? "true" : "false"}
+    >›</a>
+  </span>
+
+  {showHelp && (
+    <span class="ddd-chrome__group" data-axis="help">
+      <button
+        type="button"
+        class="ddd-chrome__btn"
+        data-tooltip={tip.help}
+        data-nav="help"
+        aria-label={tip.help}
+      >?</button>
+    </span>
+  )}
+</nav>
+
+<style>
+  /* ── Capsule ────────────────────────────────────────────────────── */
+
+  .ddd-chrome {
+    position: fixed;
+    bottom: 1rem;
+    right: 1rem;
+    z-index: var(--ddd-chrome-z, 100);
+
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.4rem;
+
+    background: var(--ddd-chrome-bg, rgb(255 255 255 / 0.85));
+    backdrop-filter: var(--ddd-chrome-backdrop, blur(8px));
+    -webkit-backdrop-filter: var(--ddd-chrome-backdrop, blur(8px));
+    border: 1px solid var(--ddd-chrome-border, rgb(209 213 219));
+    border-radius: var(--ddd-chrome-radius, 2px);
+
+    font-family: var(--ddd-chrome-font, ui-sans-serif, system-ui, sans-serif);
+    color: var(--ddd-chrome-fg, rgb(55 65 81));
+
+    opacity: var(--ddd-chrome-idle-opacity, 0.3);
+    transition: opacity var(--ddd-chrome-fade-ms, 200ms) ease;
+    user-select: none;
+  }
+
+  .ddd-chrome:hover,
+  .ddd-chrome:focus-within {
+    opacity: 1;
+  }
+
+  /* When the surrounding play context hides chrome (C / F key).
+     DeckOverlay--Play-UI sets the attribute on its root; wrap the parent
+     selector in :global() so Astro's scoped-CSS compiler doesn't require
+     it to carry DeckChrome's own scope marker. */
+  :global([data-chrome-hidden="true"]) .ddd-chrome {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* ── Counter ────────────────────────────────────────────────────── */
+
+  .ddd-chrome__counter {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.15rem;
+    padding: 0.25rem 0.5rem;
+
+    font-family: var(--ddd-chrome-font-mono, ui-monospace, "SFMono-Regular", Menlo, monospace);
+    font-size: var(--ddd-chrome-size-counter, 11px);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.06em;
+    color: var(--ddd-chrome-fg-muted, rgb(107 114 128));
+
+    background: transparent;
+    border-right: 1px solid var(--ddd-chrome-border, rgb(209 213 219));
+  }
+
+  .ddd-chrome__slot-num {
+    color: var(--ddd-chrome-fg-strong, rgb(15 23 42));
+    font-weight: 600;
+  }
+
+  .ddd-chrome__sep {
+    opacity: 0.5;
+    margin: 0 0.15rem;
+  }
+
+  .ddd-chrome__variant,
+  .ddd-chrome__variant-counter {
+    margin-left: 0.35rem;
+  }
+
+  /* ── Button groups ──────────────────────────────────────────────── */
+
+  .ddd-chrome__group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+  }
+
+  /* ── Button ─────────────────────────────────────────────────────── */
+
+  .ddd-chrome__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    min-width: var(--ddd-chrome-button-w, 28px);
+    height: var(--ddd-chrome-button-h, 28px);
+    padding: 0 0.5rem;
+
+    background: transparent;
+    border: 1px solid var(--ddd-chrome-border, rgb(209 213 219));
+    border-radius: var(--ddd-chrome-radius, 2px);
+
+    font-family: inherit;
+    font-size: var(--ddd-chrome-size-button, 12px);
+    color: var(--ddd-chrome-fg, rgb(55 65 81));
+    text-decoration: none;
+    line-height: 1;
+    cursor: pointer;
+
+    transition: background var(--ddd-chrome-fade-ms, 200ms) ease,
+                color var(--ddd-chrome-fade-ms, 200ms) ease;
+  }
+
+  .ddd-chrome__btn:hover,
+  .ddd-chrome__btn:focus-visible {
+    background: var(--ddd-chrome-bg-hover, rgb(249 250 251));
+    color: var(--ddd-chrome-fg-strong, rgb(15 23 42));
+    outline: none;
+  }
+
+  .ddd-chrome__btn--text {
+    min-width: auto;
+    padding: 0 0.6rem;
+    font-size: calc(var(--ddd-chrome-size-button, 12px) - 1px);
+    letter-spacing: 0.06em;
+  }
+
+  .ddd-chrome__btn.is-disabled {
+    pointer-events: none;
+    opacity: 0.3;
+  }
+
+  /* ── Boundary state — hide irrelevant arrow at first / last slot ── */
+
+  .ddd-chrome[data-at-first="true"] [data-nav="slot-prev"] {
+    visibility: hidden;
+  }
+  .ddd-chrome[data-at-last="true"] [data-nav="slot-next"] {
+    visibility: hidden;
+  }
+
+  /* ── Custom tooltips ────────────────────────────────────────────── */
+
+  .ddd-chrome__btn {
+    position: relative;
+  }
+
+  .ddd-chrome__btn::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 0.5rem);
+    right: 0;
+    transform: translateY(4px);
+
+    background: var(--ddd-chrome-tooltip-bg, rgb(15 23 42 / 0.95));
+    color: var(--ddd-chrome-tooltip-fg, white);
+    font-family: var(--ddd-chrome-font, ui-sans-serif, system-ui, sans-serif);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    padding: var(--ddd-chrome-tooltip-pad, 0.4rem 0.65rem);
+    border-radius: var(--ddd-chrome-tooltip-radius, 4px);
+
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--ddd-chrome-tooltip-fade-ms, 120ms) ease,
+                transform var(--ddd-chrome-tooltip-fade-ms, 120ms) ease;
+    z-index: calc(var(--ddd-chrome-z, 100) + 100);
+  }
+
+  .ddd-chrome__btn::before {
+    content: "";
+    position: absolute;
+    bottom: calc(100% + 0.1rem);
+    right: 0.6rem;
+    border: 4px solid transparent;
+    border-top-color: var(--ddd-chrome-tooltip-bg, rgb(15 23 42 / 0.95));
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--ddd-chrome-tooltip-fade-ms, 120ms) ease;
+    z-index: calc(var(--ddd-chrome-z, 100) + 100);
+  }
+
+  .ddd-chrome__btn:hover::after,
+  .ddd-chrome__btn:focus-visible::after {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .ddd-chrome__btn:hover::before,
+  .ddd-chrome__btn:focus-visible::before {
+    opacity: 1;
+  }
+</style>
+
+<script
+  is:inline
+  data-ddd-chrome-script
+  data-prev={prevHref ?? ""}
+  data-next={nextHref ?? ""}
+  data-first={firstHref}
+  data-last={lastHref}
+  data-toc={tocHref}
+  data-enable-keyboard={enableKeyboard ? "true" : "false"}
+>
+  (() => {
+    const cfg = document.currentScript;
+    if (!cfg) return;
+    const prev = cfg.getAttribute("data-prev") || null;
+    const next = cfg.getAttribute("data-next") || null;
+    const first = cfg.getAttribute("data-first");
+    const last = cfg.getAttribute("data-last");
+    const toc = cfg.getAttribute("data-toc");
+    const keyboardEnabled = cfg.getAttribute("data-enable-keyboard") === "true";
+
+    const root = document.querySelector("[data-ddd-chrome-root]");
+    const playRoot = root?.closest("[data-play-root]") ?? document.documentElement;
+
+    function go(href) {
+      if (href && href !== "#") window.location.href = href;
+    }
+    function toggleChrome() {
+      const current = playRoot.getAttribute("data-chrome-hidden") === "true";
+      playRoot.setAttribute("data-chrome-hidden", current ? "false" : "true");
+    }
+    function enterFullscreen() {
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else if (document.documentElement.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      }
+    }
+
+    // ── Section-nav buttons (Phase-2 scroll mode) ──
+    // When a button has no concrete href OR is wired to dispatch the event,
+    // emit ddd:section-prev / ddd:section-next so PageAsDeckWrapper can react.
+    // On play routes the ↑↓ buttons aren't rendered, so this is inert there.
+    document.querySelectorAll('[data-nav="variant-prev"]').forEach((b) => {
+      // Variant nav uses real hrefs; the dispatch path is reserved for the
+      // Phase-2 section axis if/when we route it through the same buttons.
+    });
+
+    // ── Keyboard contract — preserved verbatim from v0.1 PlayChrome ──
+    if (keyboardEnabled) {
+      document.addEventListener("keydown", (e) => {
+        // Leave browser and OS shortcuts alone (Cmd+C must copy, not hide chrome).
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+        const t = e.target;
+        if (t instanceof HTMLElement) {
+          const tag = t.tagName;
+          if (tag === "INPUT" || tag === "TEXTAREA" || t.isContentEditable) return;
+        }
+        if (e.key === "ArrowRight" || e.key === "PageDown") {
+          e.preventDefault(); go(next);
+        } else if (e.key === " " && !e.shiftKey) {
+          e.preventDefault(); go(next);
+        } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+          e.preventDefault(); go(prev);
+        } else if (e.key === " " && e.shiftKey) {
+          e.preventDefault(); go(prev);
+        } else if (e.key === "Home") {
+          e.preventDefault(); go(first);
+        } else if (e.key === "End") {
+          e.preventDefault(); go(last);
+        } else if (e.key === "f" || e.key === "F") {
+          e.preventDefault(); enterFullscreen();
+        } else if (e.key === "c" || e.key === "C") {
+          e.preventDefault(); toggleChrome();
+        } else if (e.key === "t" || e.key === "T") {
+          e.preventDefault(); go(toc);
+        } else if (e.key === "Escape") {
+          if (document.fullscreenElement) document.exitFullscreen();
+          playRoot.setAttribute("data-chrome-hidden", "false");
+        }
+      });
+    }
+
+    // ── Listen for section-changed broadcasts (Phase-2) ──
+    // No-op on play routes (no PageAsDeckWrapper present); active on scroll.
+    // PageAsDeckWrapper dispatches `deck:section-changed`; `ddd:section-changed`
+    // is kept for anything still sending the old name.
+    const onSectionChanged = (e) => {
+      const detail = (e && e.detail) || {};
+      document.querySelectorAll("[data-ddd-chrome-root]").forEach((nav) => {
+        if (typeof detail.isFirst === "boolean") {
+          nav.setAttribute("data-at-first", detail.isFirst ? "true" : "false");
+        }
+        if (typeof detail.isLast === "boolean") {
+          nav.setAttribute("data-at-last", detail.isLast ? "true" : "false");
+        }
+      });
+    };
+    window.addEventListener("deck:section-changed", onSectionChanged);
+    window.addEventListener("ddd:section-changed", onSectionChanged);
+  })();
+</script>

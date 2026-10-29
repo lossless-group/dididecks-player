@@ -1,0 +1,44 @@
+---
+/**
+ * PlayerSlide — one slide inside <DeckPlayer>.
+ *
+ * Either an image (a rendered snapshot of a slide, e.g. 1920×1080 JPEG) or
+ * inline content in the default slot. Both sit inside <SlideCanvas>, so they
+ * scale to the player at the 1920×1080 design size with no JS.
+ *
+ *   <PlayerSlide title="Cover" image="/decks/firm/slides/01.jpg" />
+ *   <PlayerSlide title="Thesis"><MySlide /></PlayerSlide>
+ */
+import SlideCanvas from "./SlideCanvas.astro";
+
+export interface Props {
+  /** Shown in the ToC and announced to screen readers. */
+  title?: string;
+  /** A rendered slide image. When set, the default slot is ignored. */
+  image?: string;
+  alt?: string;
+  /** Canvas background behind the slide (letterbox colour). */
+  background?: string;
+}
+
+const { title, image, alt, background } = Astro.props;
+---
+
+<section class="ddp-slide" data-ddp-slide data-title={title} aria-roledescription="slide" aria-label={title}>
+  <SlideCanvas title={title} background={background}>
+    {image ? (
+      <img class="ddp-slide__img" src={image} alt={alt ?? title ?? ""} width="1920" height="1080" loading="lazy" decoding="async" />
+    ) : (
+      <slot />
+    )}
+  </SlideCanvas>
+</section>
+
+<style>
+  .ddp-slide__img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+</style>

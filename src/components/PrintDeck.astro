@@ -1,0 +1,47 @@
+---
+/**
+ * PrintDeck — lays slides out one per page for ⌘P → PDF.
+ *
+ * Each direct child is one page (typically a <PlayerSlide> or a
+ * <SlideCanvas>). Pages are 16:9 and letterbox inside whatever paper the
+ * browser picks; on screen they stack with a gap and a shadow for review.
+ *
+ * Extracted from @dididecks/shell's /play/.../print route, minus its registry
+ * loading: the route stays in the shell, this is just the layout.
+ */
+export interface Props {
+  title?: string;
+}
+const { title } = Astro.props;
+---
+
+<div class="ddp-print" aria-label={title}>
+  <slot />
+</div>
+
+<style is:global>
+  @page { size: landscape; margin: 0; }
+
+  .ddp-print { display: flex; flex-direction: column; align-items: center; gap: 0; }
+  .ddp-print > * {
+    width: 100%;
+    max-width: 1920px;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    position: relative;
+    break-after: page;
+    page-break-after: always;
+  }
+  .ddp-print > *:last-child { break-after: auto; page-break-after: auto; }
+  /* PlayerSlide hides inactive slides inside a DeckPlayer; here every one shows. */
+  .ddp-print .ddp-slide { display: block; }
+
+  @media screen {
+    .ddp-print { padding: 24px 0; background: #e5e7eb; }
+    .ddp-print > * { margin-bottom: 24px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12); }
+  }
+  @media print {
+    .ddp-print { padding: 0; background: #fff; }
+    .ddp-print > * { margin: 0; box-shadow: none; max-width: none; }
+  }
+</style>

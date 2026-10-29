@@ -1,0 +1,12 @@
+{
+  "name": "@lossless-group/dididecks-player",
+  "version": "0.1.0",
+  "description": "DidiDecks player: 16:9 slide canvas, play deck, scroll deck, chrome, paginator and print layout for Astro.",
+  "license": "MIT",
+  "exports": {
+    "./runtime/mode-switcher": "./src/runtime/mode-switcher.ts"
+  },
+  "publish": {
+    "include": ["src/**/*.ts", "src/**/*.astro", "src/**/*.css", "deno.json", "package.json", "README.md"]
+  }
+}

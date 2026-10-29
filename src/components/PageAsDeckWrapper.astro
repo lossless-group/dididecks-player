@@ -1,0 +1,299 @@
+---
+/**
+ * PageAsDeckWrapper — shared scroll-deck navigation primitive.
+ *
+ * Wraps a series of <section> children in a scroll-snap deck:
+ *   - Scroll-snap (y mandatory)
+ *   - Up/Down (PageUp/PageDown) arrow keys → navigate sections
+ *   - Home / End → first / last section
+ *   - Double-click upper/lower half → navigate sections
+ *   - 'c' → toggle chrome visibility (body[data-chrome])
+ *   - 'f' → toggle fullscreen
+ *   - #s-N hash → jump to section N on load
+ *   - Section indicator pinned top-right (NN / total)
+ *   - .reveal-item children fade in via IntersectionObserver
+ *   - Dispatches `deck:section-changed { index, total, isFirst, isLast }`
+ *     and listens for `deck:section-prev` / `deck:section-next` (so
+ *     DeckChrome buttons drive the same nav as keys / scroll).
+ *
+ * Consumer integration:
+ *
+ *   import PageAsDeckWrapper from "@lossless-group/dididecks-player/components/PageAsDeckWrapper.astro";
+ *
+ *   <PageAsDeckWrapper>
+ *     <section data-slot="01" data-variant="proto">…</section>
+ *     <section data-slot="02" data-variant="proto">…</section>
+ *     …
+ *   </PageAsDeckWrapper>
+ *
+ * Promoted from chroma-decks v0.1 layouts/PageAsDeckWrapper.astro on
+ * 2026-06-06 so every client-site gets keyboard + scroll-snap + counter
+ * for free instead of re-implementing per repo.
+ *
+ * Theming: every visual value reads through a CSS var with a sensible
+ * fallback. Consumer theme.css can override --ddd-scroll-* tokens; no
+ * client-site is *required* to declare them.
+ */
+
+interface Props {
+  enableScrollSnap?: boolean;
+  showNavigationHints?: boolean;
+  hintDuration?: number;
+}
+
+const {
+  enableScrollSnap = true,
+  showNavigationHints = true,
+  hintDuration = 2400,
+} = Astro.props as Props;
+
+// SlidePaginator is the standalone top-right indicator. It replaces the
+// inline `.ddd-section-indicator` block that used to live here; theming
+// is via `--ddd-chrome-*` tokens (chrome-tokens.css) so the capsule
+// inverts contrast per `<html data-mode>`. It dispatches
+// `deck:section-goto` events for type-to-jump, which the wrapper script
+// listens for below.
+import SlidePaginator from "./SlidePaginator.astro";
+---
+
+<div
+  class="ddd-deck-wrapper"
+  data-scroll-snap={String(enableScrollSnap)}
+  data-show-hints={String(showNavigationHints)}
+  data-hint-duration={String(hintDuration)}
+>
+  <div class="ddd-deck-content">
+    <slot />
+  </div>
+
+  <div class="ddd-nav-hint" style={showNavigationHints ? "" : "display: none;"}>
+    <span class="ddd-hint-icon">↓</span>
+    <span class="ddd-hint-text">scroll · arrow keys · double-click to advance</span>
+  </div>
+
+  <SlidePaginator />
+</div>
+
+<style>
+  .ddd-deck-wrapper {
+    height: var(--deck-height, 100vh);
+    overflow-y: auto;
+    position: relative;
+  }
+
+  .ddd-deck-wrapper[data-scroll-snap="true"] {
+    scroll-snap-type: y mandatory;
+  }
+
+  /* Children should opt-in to snap-align — we do NOT force it on every
+     <section> globally, because some consumers carry decorative nested
+     sections that shouldn't snap. The recommended pattern is to add
+     `scroll-snap-align: start` on each top-level slot section in the
+     consumer's CSS, or use class .ddd-snap below. */
+  .ddd-deck-content > section,
+  .ddd-deck-content > .ddd-snap {
+    scroll-snap-align: start;
+  }
+
+  .ddd-deck-content { min-height: 100%; }
+
+  .ddd-nav-hint {
+    position: fixed;
+    bottom: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.5rem 1rem;
+    border-radius: var(--ddd-scroll-pill-radius, 999px);
+    background: var(--ddd-scroll-glass-bg, var(--color-glass-bg, rgba(255, 255, 255, 0.85)));
+    border: 1px solid var(--ddd-scroll-glass-border, var(--color-border, rgba(0, 0, 0, 0.1)));
+    color: var(--ddd-scroll-text-muted, var(--color-text-muted, #6b7280));
+    font-family: var(--ddd-scroll-font, var(--font-body, system-ui, sans-serif));
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    z-index: 100;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+
+  .ddd-deck-wrapper.show-hints .ddd-nav-hint { opacity: 1; }
+  .ddd-deck-wrapper.at-last     .ddd-nav-hint { opacity: 0; }
+
+  .ddd-hint-icon { font-size: 0.9rem; animation: ddd-bounce 2s ease-in-out infinite; }
+  @keyframes ddd-bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(3px); } }
+
+  /* The section-indicator capsule has been extracted to SlidePaginator.astro,
+     which owns its own styles via the canonical --ddd-chrome-* tokens and
+     mode-aware overrides for dark/vibrant. Don't reintroduce styles here. */
+
+  /* Chrome-off mode (toggled with 'c'). SlidePaginator handles its own
+     visibility under body[data-chrome="off"]. */
+  :global(body[data-chrome="off"]) .ddd-nav-hint { opacity: 0; pointer-events: none; }
+  :global(body[data-chrome="off"]) .ddd-deck-wrapper { height: 100vh; }
+</style>
+
+<script>
+  function initDeckNavigator() {
+    const wrappers = document.querySelectorAll<HTMLElement>(".ddd-deck-wrapper");
+
+    wrappers.forEach((wrapper) => {
+      if (wrapper.hasAttribute("data-initialized")) return;
+      wrapper.setAttribute("data-initialized", "true");
+
+      // Scope to direct top-level sections only. Decorative nested
+      // <section> elements inside slides shouldn't count toward the
+      // total — a flat querySelectorAll('section') would over-count.
+      const deckContent = wrapper.querySelector<HTMLElement>(":scope > .ddd-deck-content");
+      const sections = deckContent
+        ? deckContent.querySelectorAll<HTMLElement>(":scope > section")
+        : wrapper.querySelectorAll<HTMLElement>("section");
+      let currentIndex = 0;
+      let isNavigating = false;
+
+      const showHints   = wrapper.getAttribute("data-show-hints") === "true";
+      const hintDuration = parseInt(wrapper.getAttribute("data-hint-duration") || "2400", 10);
+
+      const updateIndicator = () => {
+        // SlidePaginator listens to deck:section-changed (dispatched in
+        // updateBoundaries) and syncs its own DOM. We keep this stub for
+        // backwards-compat with any consumer that still queries the old
+        // .ddd-current-section / .ddd-total-sections selectors — those
+        // selectors no longer match anything but the function is cheap
+        // and the call sites already exist.
+        const cur = wrapper.querySelector(".ddd-current-section");
+        const tot = wrapper.querySelector(".ddd-total-sections");
+        if (cur) cur.textContent = String(currentIndex + 1);
+        if (tot) tot.textContent = String(sections.length);
+      };
+
+      const updateBoundaries = () => {
+        wrapper.classList.toggle("at-first", currentIndex === 0);
+        wrapper.classList.toggle("at-last",  currentIndex === sections.length - 1);
+        window.dispatchEvent(new CustomEvent("deck:section-changed", {
+          detail: {
+            index: currentIndex,
+            total: sections.length,
+            isFirst: currentIndex === 0,
+            isLast:  currentIndex === sections.length - 1,
+          },
+        }));
+      };
+
+      const navigateTo = (index: number) => {
+        if (index < 0 || index >= sections.length || isNavigating) return;
+        isNavigating = true;
+        currentIndex = index;
+        sections[index].scrollIntoView({ behavior: "smooth", block: "start" });
+        updateIndicator();
+        updateBoundaries();
+        setTimeout(() => { isNavigating = false; }, 500);
+      };
+
+      const next = () => navigateTo(currentIndex + 1);
+      const prev = () => navigateTo(currentIndex - 1);
+
+      window.addEventListener("deck:section-prev", prev as EventListener);
+      window.addEventListener("deck:section-next", next as EventListener);
+
+      // SlidePaginator's type-to-jump input dispatches this with detail.index
+      // (0-based, already clamped to deck bounds).
+      window.addEventListener("deck:section-goto", ((e: CustomEvent) => {
+        if (typeof e.detail?.index === "number") navigateTo(e.detail.index);
+      }) as EventListener);
+
+      // #s-N hash jump on load.
+      const hashMatch = location.hash.match(/^#s-(\d+)$/);
+      if (hashMatch) {
+        const idx = Math.min(sections.length - 1, Math.max(0, parseInt(hashMatch[1], 10) - 1));
+        currentIndex = idx;
+        sections[idx].scrollIntoView({ behavior: "auto", block: "start" });
+        updateIndicator();
+      }
+
+      requestAnimationFrame(() => updateBoundaries());
+
+      wrapper.addEventListener("dblclick", (e) => {
+        if (isNavigating) return;
+        const isUpper = (e as MouseEvent).clientY < window.innerHeight / 2;
+        isUpper ? prev() : next();
+      });
+
+      let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
+      wrapper.addEventListener("scroll", () => {
+        if (scrollTimeout) clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(() => {
+          const vh = window.innerHeight;
+          let newIndex = 0;
+          let maxVisibility = 0;
+          sections.forEach((s, i) => {
+            const r = s.getBoundingClientRect();
+            const visible = Math.max(0, Math.min(vh, r.bottom) - Math.max(0, r.top));
+            if (visible / vh > maxVisibility) {
+              maxVisibility = visible / vh;
+              newIndex = i;
+            }
+          });
+          if (newIndex !== currentIndex) {
+            currentIndex = newIndex;
+            updateIndicator();
+            updateBoundaries();
+          }
+        }, 80);
+      });
+
+      document.addEventListener("keydown", (e) => {
+        const r = wrapper.getBoundingClientRect();
+        if (r.top > window.innerHeight || r.bottom < 0) return;
+        const t = e.target as HTMLElement | null;
+        if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+
+        if (e.key === "ArrowDown" || e.key === "PageDown") { e.preventDefault(); next(); }
+        else if (e.key === "ArrowUp" || e.key === "PageUp") { e.preventDefault(); prev(); }
+        else if (e.key === "Home") { e.preventDefault(); navigateTo(0); }
+        else if (e.key === "End")  { e.preventDefault(); navigateTo(sections.length - 1); }
+        else if (e.key === "c" || e.key === "C") {
+          e.preventDefault();
+          document.body.dataset.chrome = document.body.dataset.chrome === "off" ? "on" : "off";
+        } else if (e.key === "f" || e.key === "F") {
+          e.preventDefault();
+          if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+          else document.exitFullscreen?.();
+        }
+      });
+
+      const items = wrapper.querySelectorAll<HTMLElement>(".reveal-item");
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const target = entry.target as HTMLElement;
+            const delay = parseInt(target.style.getPropertyValue("--delay") || "0", 10);
+            setTimeout(() => target.classList.add("revealed"), delay);
+            io.unobserve(target);
+          }
+        });
+      }, { threshold: 0.15, rootMargin: "0px 0px -50px 0px" });
+      items.forEach((item) => io.observe(item));
+
+      updateIndicator();
+      // Defer one tick so SlidePaginator's DOMContentLoaded listener has
+      // registered before the initial deck:section-changed event fires.
+      setTimeout(() => updateBoundaries(), 0);
+
+      if (showHints) {
+        wrapper.classList.add("show-hints");
+        if (hintDuration > 0) {
+          setTimeout(() => wrapper.classList.remove("show-hints"), hintDuration);
+        }
+      }
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", initDeckNavigator);
+  document.addEventListener("astro:page-load", initDeckNavigator);
+</script>

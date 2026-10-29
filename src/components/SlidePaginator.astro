@@ -1,0 +1,201 @@
+---
+/**
+ * @dididecks/shell — SlidePaginator
+ *
+ * @internal Side-effect import: pulls the chrome-token defaults + the
+ * data-mode overrides into the page so the paginator's styling resolves
+ * even when the consumer hasn't explicitly imported a chrome theme.
+ * Safe to repeat — CSS @import dedup means the consumer paying for both
+ * neutral.css and this is one network/build cost, not two.
+ */
+import "../styles/chrome-tokens.css";
+
+/**
+ * @dididecks/shell — SlidePaginator
+ *
+ * The pinned top-right "NN / total" indicator that floats over a Scroll-UI
+ * deck. Two responsibilities:
+ *   - DISPLAY: shows the current slide number and total, updated by the
+ *     parent <PageAsDeckWrapper> via its `deck:section-changed` event.
+ *   - JUMP: the current-slide field is an `<input>` — the reader can
+ *     type a slide number and press Enter to jump there. The component
+ *     dispatches a `deck:section-goto` CustomEvent with `detail.index`
+ *     (0-based, clamped to the deck's bounds) which PageAsDeckWrapper
+ *     listens for and routes through its existing `navigateTo()` path.
+ *
+ * Theming: reads only `--ddd-chrome-*` tokens (chrome-tokens.css /
+ * themes/neutral.css). Mode-aware via `[data-mode="dark|vibrant"]`
+ * overrides on `:root` — consumers that set `<html data-mode="dark">`
+ * (lossless-decks, etc.) automatically get a low-contrast capsule that
+ * reads on a dark background; consumers that set light or nothing get
+ * the calmstorm-flavored neutral default.
+ *
+ * Chrome-off mode (`body[data-chrome="off"]`) hides the paginator
+ * without removing it from the DOM (preserves screenreader access).
+ *
+ * Pairs with PageAsDeckWrapper — not currently meaningful on its own
+ * because the parent owns section tracking. Could be lifted up later
+ * if Play-UI variants want the same affordance.
+ */
+---
+
+<div class="ddd-paginator" aria-label="Slide navigator">
+  <input
+    type="text"
+    inputmode="numeric"
+    pattern="[0-9]*"
+    class="ddd-paginator-current"
+    value="1"
+    aria-label="Current slide — type a number and press Enter to jump"
+    size="2"
+  />
+  <span class="ddd-paginator-separator" aria-hidden="true">/</span>
+  <span class="ddd-paginator-total" aria-label="Total slides">1</span>
+</div>
+
+<style>
+  .ddd-paginator {
+    position: fixed;
+    /* Aligned with .ddd-mode-toggle (top: 16px, right: 16px, width: 2.5rem).
+       Sits to the LEFT of the toggle with a 0.75rem gutter — paginator's
+       right edge = toggle right (1rem) + toggle width (2.5rem) + gap
+       (0.75rem) ≈ 4.25rem. Consumer-overridable via the same convention
+       as ModeToggle's --ddd-mode-toggle-* tokens. */
+    top: var(--ddd-paginator-top, 1rem);
+    right: var(--ddd-paginator-right, 4.25rem);
+    display: flex;
+    align-items: baseline;
+    gap: 0.25rem;
+    padding: 0.5rem 0.85rem;
+    border-radius: var(--ddd-chrome-radius, 4px);
+    background: var(--ddd-chrome-bg);
+    border: 1px solid var(--ddd-chrome-border);
+    color: var(--ddd-chrome-fg-muted);
+    font-family: var(--ddd-chrome-font-mono, var(--ddd-chrome-font));
+    font-size: var(--ddd-chrome-size-counter, 11px);
+    letter-spacing: 0.05em;
+    z-index: var(--ddd-chrome-z, 100);
+    backdrop-filter: var(--ddd-chrome-backdrop, blur(6px));
+    -webkit-backdrop-filter: var(--ddd-chrome-backdrop, blur(6px));
+    font-variant-numeric: tabular-nums;
+    transition: opacity var(--ddd-chrome-fade-ms, 200ms) ease;
+  }
+
+  .ddd-paginator-current {
+    /* Input styled to look like inline text, sized to its content. */
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: var(--ddd-chrome-fg-strong);
+    font-weight: 600;
+    width: 2ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    cursor: text;
+    transition: color var(--ddd-chrome-fade-ms, 200ms) ease;
+  }
+
+  .ddd-paginator-current::-webkit-outer-spin-button,
+  .ddd-paginator-current::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  .ddd-paginator-current:focus {
+    color: var(--ddd-chrome-fg-strong);
+    outline: 1px solid var(--ddd-chrome-border);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  .ddd-paginator-separator { opacity: 0.5; }
+  .ddd-paginator-total     { opacity: 0.7; color: var(--ddd-chrome-fg); }
+
+  /* Chrome-off mode (toggled with 'c' in PageAsDeckWrapper). */
+  :global(body[data-chrome="off"]) .ddd-paginator {
+    opacity: 0;
+    pointer-events: none;
+  }
+</style>
+
+<script>
+  function initSlidePaginator() {
+    const paginators = document.querySelectorAll<HTMLElement>(".ddd-paginator");
+
+    paginators.forEach((paginator) => {
+      if (paginator.hasAttribute("data-initialized")) return;
+      paginator.setAttribute("data-initialized", "true");
+
+      const input = paginator.querySelector<HTMLInputElement>(".ddd-paginator-current");
+      const total = paginator.querySelector<HTMLElement>(".ddd-paginator-total");
+      if (!input || !total) return;
+
+      // Update from parent wrapper's section-changed event.
+      const onSectionChanged = (e: Event) => {
+        const detail = (e as CustomEvent).detail as { index: number; total: number };
+        if (typeof detail?.index === "number") input.value = String(detail.index + 1);
+        if (typeof detail?.total === "number") total.textContent = String(detail.total);
+      };
+      window.addEventListener("deck:section-changed", onSectionChanged as EventListener);
+
+      // Helper: parse + clamp + dispatch jump.
+      const jump = () => {
+        const raw = input.value.trim();
+        const parsed = parseInt(raw, 10);
+        const totalCount = parseInt(total.textContent || "1", 10);
+        if (Number.isNaN(parsed) || totalCount < 1) {
+          // Revert to whatever was last valid — easiest: re-broadcast a sync request.
+          // PageAsDeckWrapper will re-emit deck:section-changed on next nav, but for
+          // immediate revert, just blur and let the next nav refresh it.
+          input.blur();
+          return;
+        }
+        const oneBased = Math.min(totalCount, Math.max(1, parsed));
+        input.value = String(oneBased);
+        window.dispatchEvent(
+          new CustomEvent("deck:section-goto", { detail: { index: oneBased - 1 } }),
+        );
+        input.blur();
+      };
+
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          jump();
+        } else if (e.key === "Escape") {
+          input.blur();
+        }
+      });
+
+      // Stop the input from competing with the wrapper's PageDown/arrow nav
+      // while it has focus. Don't preventDefault — just stopPropagation so
+      // typing digits works.
+      input.addEventListener("keydown", (e) => {
+        if (e.key.length === 1 || ["Backspace", "Delete", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+          e.stopPropagation();
+        }
+      });
+
+      // On focus: select all so the reader can overtype.
+      input.addEventListener("focus", () => input.select());
+
+      // On blur: if the value isn't a valid number, restore from the input's
+      // last-seen value (re-broadcast handled by the wrapper on next nav).
+      // For now, just trust that the next deck:section-changed event will
+      // reconcile if the user typed garbage and blurred.
+    });
+  }
+
+  if (typeof document !== "undefined") {
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", initSlidePaginator);
+    } else {
+      initSlidePaginator();
+    }
+  }
+</script>
