@@ -20,6 +20,7 @@ tags:
   - JSR
 date_authored_initial_draft: 2026-10-28
 date_authored_current_draft: 2026-10-28
+type: Specs
 ---
 
 # Dididecks Player
