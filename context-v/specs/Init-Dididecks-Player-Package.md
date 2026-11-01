@@ -8,18 +8,19 @@ title: "Dididecks Player: the viewer half of DidiDecks as a standalone package"
 lede: "Every Lossless site that shows a deck rebuilt its own viewer. This package is the one copy: static Astro components that play, scroll and print 16:9 decks, with the authoring tools left behind in the shell."
 slug: init-dididecks-player-package
 at_semantic_version: 0.1.0
-status: In-Progress
+status: Partially-Shipped
 authors:
   - Michael Staton
-augmented_with: "Claude Code on Claude Opus 5.5 (1M context)"
+augmented_with:
+  - "Claude Code on Claude Opus 5.5 (1M context)"
 tags:
   - Dididecks
   - Slide-Decks
   - Astro-Components
   - Package-Extraction
-  - JSR
 date_authored_initial_draft: 2026-10-28
 date_authored_current_draft: 2026-10-28
+date_first_published: 2026-10-28
 type: Specs
 ---
 
